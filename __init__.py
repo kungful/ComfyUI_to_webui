@@ -8,7 +8,11 @@ import re
 import folder_paths
 import server
 from aiohttp import web
-
+import os
+# 强制让当前进程认为没有代理
+os.environ.pop('http_proxy', None)
+os.environ.pop('https_proxy', None)
+os.environ.pop('all_proxy', None)
 # --- 改进的自动依赖安装 ---
 # 映射 PyPI 包名到导入时使用的模块名（如果不同）
 package_to_module_map = {
@@ -323,3 +327,4 @@ __all__ = [
     "NODE_DISPLAY_NAME_MAPPINGS",
     "WEB_DIRECTORY",
 ]
+
