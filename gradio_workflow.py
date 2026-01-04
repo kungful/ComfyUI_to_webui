@@ -8,6 +8,7 @@ from PIL import Image, ImageSequence, ImageOps
 import re
 import io # 导入 io 用于更精确的文件处理
 import gradio as gr
+from packaging import version
 import numpy as np
 import torch
 import threading
@@ -1133,7 +1134,11 @@ def clear_history():
 # Combine imported HACKER_CSS with monitor CSS
 combined_css = HACKER_CSS + "\n" + monitor_css
 
-with gr.Blocks(css=combined_css) as demo:
+# 检查 Gradio 版本以支持向下兼容
+GRADIO_VERSION = gr.__version__
+GRADIO_SUPPORTS_NEW_API = version.parse(GRADIO_VERSION) >= version.parse("4.0.0")
+
+with gr.Blocks() as demo:
     with gr.Tab("封装comfyui工作流"):
         with gr.Row():
            with gr.Column():  # 左侧列
@@ -1146,7 +1151,6 @@ with gr.Blocks(css=combined_css) as demo:
                            max_lines=20,
                            autoscroll=True,
                            interactive=False,
-                           show_copy_button=True,
                            elem_classes="log-display-container"
                        )
                        # 系统监控 HTML 输出组件
@@ -1814,7 +1818,17 @@ def luanch_gradio(demo_instance): # 接收 demo 实例
             try:
                 # share=True 会尝试创建公网链接，可能需要登录 huggingface
                 # server_name="0.0.0.0" 允许局域网访问
-                demo_instance.launch(server_name="0.0.0.0", server_port=port, share=False, prevent_thread_lock=True)
+                # 根据 Gradio 版本调整参数传递方式
+                launch_kwargs = {
+                    "server_name": "0.0.0.0",
+                    "server_port": port,
+                    "share": False,
+                    "prevent_thread_lock": True
+                }
+                # Gradio 6.0+ 将 css 移到 launch() 方法
+                if GRADIO_SUPPORTS_NEW_API:
+                    launch_kwargs["css"] = combined_css
+                demo_instance.launch(**launch_kwargs)
                 print(f"Gradio 界面已在 http://127.0.0.1:{port} (或局域网 IP) 启动")
                 # 启动成功后打开本地链接
                 webbrowser.open(f"http://127.0.0.1:{port}/")
