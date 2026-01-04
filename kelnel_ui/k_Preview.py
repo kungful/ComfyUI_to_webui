@@ -1,5 +1,5 @@
 import gradio as gr
-import websocket
+from websocket import create_connection, WebSocketException, WebSocketTimeoutException, WebSocketConnectionClosedException
 import json
 import threading
 import time
@@ -37,7 +37,7 @@ class ComfyUIPreviewer:
         while self.active_prompt_info.get("is_worker_globally_active", True):
             try:
                 self.ws_connection_status = f"正在连接到 {ws_url}..."
-                ws = websocket.create_connection(ws_url, timeout=10)
+                ws = create_connection(ws_url, timeout=10)
                 self.ws_connection_status = "WebSocket 已连接"
                 print(f"[{self.client_id}] WebSocket connection established to {ws_url}.")
                 
@@ -52,10 +52,10 @@ class ComfyUIPreviewer:
                         ws.settimeout(1.0) 
                         received_message = ws.recv()
                         ws.settimeout(None) # Reset timeout after successful receive
-                    except websocket.WebSocketTimeoutException:
+                    except WebSocketTimeoutException:
                         # Timeout is expected, just continue to check the loop condition
                         continue 
-                    except websocket.WebSocketConnectionClosedException:
+                    except WebSocketConnectionClosedException:
                         self.ws_connection_status = "WebSocket 连接已关闭"
                         print(f"[{self.client_id}] WebSocket connection closed during active receive.")
                         break 
@@ -121,7 +121,7 @@ class ComfyUIPreviewer:
                         self.latest_preview_image = pil_image_to_update
                         self.image_update_event.set()
 
-            except websocket.WebSocketException as e:
+            except WebSocketException as e:
                 self.ws_connection_status = f"WebSocket 连接错误: {e}"
                 print(f"[{self.client_id}] WebSocket connection error: {e}. Retrying in 5 seconds...")
             except ConnectionRefusedError:
