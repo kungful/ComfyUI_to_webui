@@ -2,9 +2,11 @@ gradio>=3.0
 Pillow
 python-barcode
 numpy
-websocket
+websocket-client
 requests
 imageio[ffmpeg]
 psutil
 pynvml
 httpx[socks]
+openai
+packaging
