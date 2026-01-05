@@ -1,5 +1,4 @@
-部署依赖建议gradio==5.21.0
-有空就增加更多动态组件，目前4
+已经支持最新gradio版本依赖，
 `gradio_workflow.py` 目前支持 __4__ 种动态组件类：
 1. __`GradioTextOk`__: 用于动态生成正向提示词输入框 (`gr.Textbox`)。
 2. __`Hua_LoraLoaderModelOnly`__: 用于动态生成 Lora 模型选择下拉框 (`gr.Dropdown`)。
@@ -61,4 +60,5 @@
 ![预览image](https://github.com/kungful/ComfyUI_to_webui/blob/4af4203a114cef054bf31287f1f191fa8b0f5742/Sample_preview/image.png)
 ![预览model](https://github.com/kungful/ComfyUI_to_webui/blob/4af4203a114cef054bf31287f1f191fa8b0f5742/Sample_preview/model.png)
 ![image](https://github.com/user-attachments/assets/85867dab-ded0-46f3-b0f7-a1e3e0843600)
+
 
