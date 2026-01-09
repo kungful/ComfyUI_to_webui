@@ -2,26 +2,59 @@ import subprocess
 import importlib
 import sys
 import os
-import platform # 移到这里，因为下面的代码需要它
+import platform
+
+# --- 1. 修复代理协议问题 (针对 httpx/Gradio) ---
+# 如果存在 socks:// 格式的代理，尝试自动修正为 socks5://，避免 Gradio 报错
+for key in ['http_proxy', 'https_proxy', 'all_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY']:
+    proxy_value = os.environ.get(key)
+    if proxy_value and proxy_value.startswith('socks://'):
+        print(f"[ComfyUI_to_webui] Warning: Fixing proxy scheme in {key} from socks:// to socks5://")
+        os.environ[key] = proxy_value.replace('socks://', 'socks5://')
+
+# --- 2. 稳健的依赖安装函数 ---
+def check_and_install(package_name, import_name=None):
+    if import_name is None:
+        import_name = package_name
+    
+    try:
+        importlib.import_module(import_name)
+    except ImportError:
+        print(f"[ComfyUI_to_webui] Installing missing dependency: {package_name}...")
+        try:
+            # 使用 sys.executable 确保安装到当前 Python 环境
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", package_name, "--no-warn-script-location"],
+                env=os.environ.copy() # 继承当前环境变量（包含修正后的代理）
+            )
+            print(f"[ComfyUI_to_webui] {package_name} installed successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"[ComfyUI_to_webui] FAILED to install {package_name}. Error: {e}")
+            print(f"[ComfyUI_to_webui] Please install it manually: pip install {package_name}")
+
+# --- 3. 执行安装检查 ---
+# 映射表：PyPI包名 -> import名
+requirements = {
+    "gradio": "gradio",
+    "opencv-python": "cv2",
+    "Pillow": "PIL",
+    "numpy": "numpy",
+    "httpx": "httpx", # Gradio 核心依赖
+    # "httpx[socks]": "httpx" # 如果必须用 socks 代理，取消此行注释
+}
+
+print("--- Checking custom node dependencies for ComfyUI_to_webui ---")
+for package, import_name in requirements.items():
+    check_and_install(package, import_name)
+print("--- Dependency check finished ---")
+
+# ... 后面接原本的代码 ...
+
 import json
 import re
 import folder_paths
 import server
 from aiohttp import web
-import os
-# 强制让当前进程认为没有代理
-os.environ.pop('http_proxy', None)
-os.environ.pop('https_proxy', None)
-os.environ.pop('all_proxy', None)
-# --- 改进的自动依赖安装 ---
-# 映射 PyPI 包名到导入时使用的模块名（如果不同）
-package_to_module_map = {
-    "python-barcode": "barcode",
-    "Pillow": "PIL",
-    "imageio[ffmpeg]": "imageio",
-    "websocket-client": "websocket", # 添加 websocket-client 到 websocket 的映射
-    # 添加其他需要的映射
-}
 
 # 获取当前脚本目录
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -60,82 +93,6 @@ else:
 
 print(f"Using Python executable for pip: {python_exe_to_use}")
 # --- 结束 Python 可执行文件确定 ---
-
-
-def check_and_install_dependencies(requirements_file):
-    print("--- Checking custom node dependencies ---")
-    installed_packages = False
-    try:
-        with open(requirements_file, 'r') as file:
-            for line in file:
-                package_line = line.strip()
-                if package_line and not package_line.startswith('#') and not package_line.startswith('--'):
-                    # --- 从行中提取纯包名和安装名 ---
-                    package_name_for_install = package_line # 用于 pip install 的完整行
-                    package_name_for_import = package_line # 用于 import 的纯包名，先假设一致
-                    # 查找版本说明符的位置来分离纯包名
-                    for spec in ['==', '>=', '<=', '>', '<', '~=', '!=']:
-                        if spec in package_name_for_import:
-                            package_name_for_import = package_name_for_import.split(spec)[0].strip()
-                            break # 找到第一个就停止
-                    # --- 结束提取 ---
-
-                    # 使用提取出的纯包名查找模块名映射 (例如 Pillow -> PIL)
-                    module_name = package_to_module_map.get(package_name_for_import, package_name_for_import)
-                    try:
-                        # 尝试导入纯模块名
-                        importlib.import_module(module_name)
-                        # print(f"Dependency '{package_name_for_install}' (module: {module_name}) already installed.")
-                    except ImportError:
-                        print(f"Dependency '{package_name_for_install}' (module: {module_name}) not found. Installing...")
-                        try:
-                            # 使用包含版本约束的原始行进行安装
-                            subprocess.check_call([python_exe_to_use, "-m", "pip", "install", "--disable-pip-version-check", "--no-cache-dir", package_name_for_install])
-                            print(f"Successfully installed '{package_name_for_install}'.")
-                            importlib.invalidate_caches() # 清除导入缓存很重要
-                            importlib.import_module(module_name) # 使用纯模块名再次尝试导入
-                            installed_packages = True
-                        except subprocess.CalledProcessError as e_main:
-                            print(f"## [WARN] ComfyUI_to_webui: Failed to install dependency '{package_name_for_install}' with standard method. Command failed: {e_main}. Attempting with --user.")
-                            try:
-                                # 尝试使用 --user 参数进行备用安装
-                                subprocess.check_call([python_exe_to_use, "-m", "pip", "install", "--user", "--disable-pip-version-check", "--no-cache-dir", package_name_for_install])
-                                print(f"Successfully installed '{package_name_for_install}' using --user.")
-                                importlib.invalidate_caches()
-                                importlib.import_module(module_name)
-                                installed_packages = True
-                            except subprocess.CalledProcessError as e_user:
-                                print(f"## [ERROR] ComfyUI_to_webui: Failed to install dependency '{package_name_for_install}' even with --user. Command failed: {e_user}.")
-                                print("Please try installing dependencies manually:")
-                                print(f"1. Open a terminal or command prompt.")
-                                print(f"2. (Optional) Navigate to ComfyUI root: cd \"{comfyui_root}\"")
-                                print(f"3. Run: \"{python_exe_to_use}\" -m pip install {package_name_for_install}")
-                                print(f"   Alternatively, try installing all requirements: \"{python_exe_to_use}\" -m pip install -r \"{requirements_file}\"")
-                                print("   If issues persist, you can seek help at relevant ComfyUI support channels or the node's repository.")
-                            except ImportError:
-                                print(f"## [ERROR] ComfyUI_to_webui: Could not import module '{module_name}' for package '{package_name_for_install}' even after attempting --user install. Check if the package name correctly provides the module.")
-                        except ImportError:
-                             # 调整错误信息，使其更清晰
-                             print(f"## [ERROR] ComfyUI_to_webui: Could not import module '{module_name}' after attempting to install package '{package_name_for_install}'. Check if the package name '{package_name_for_install}' correctly provides the module '{module_name}'.")
-                        except Exception as e:
-                            print(f"## [ERROR] ComfyUI_to_webui: An unexpected error occurred during installation of '{package_name_for_install}': {e}")
-    except FileNotFoundError:
-         print(f"Warning: requirements.txt not found at '{requirements_file}', skipping dependency check.")
-    except Exception as e:
-        print(f"ERROR: An unexpected error occurred while processing requirements: {e}")
-
-
-    if installed_packages:
-        print("--- ComfyUI_to_webui: Dependency installation attempt complete. You may need to restart ComfyUI if new packages were installed. ---")
-    else:
-        print("--- All dependencies seem to be installed. ---")
-
-
-# 自动检测并安装依赖 (移到文件顶部执行)
-requirements_path = os.path.join(current_dir, "requirements.txt")
-check_and_install_dependencies(requirements_path)
-
-# --- 结束自动依赖安装 ---
 
 
 from .node.hua_word_image import Huaword, HuaFloatNode, HuaIntNode # 移除了 HuaFloatNode2/3/4, HuaIntNode2/3/4
