@@ -145,7 +145,7 @@ class Hua_Video_Output:
     # 添加 preset 参数到函数签名
     def output_video_gradio(self, images, filename_prefix, frame_rate, format, unique_id,
                              loop_count=0, pingpong=False, save_output=True, audio=None, crf=23,
-                             preset="fast", prompt=None, extra_pnginfo=None): # Removed save_metadata_png parameter
+                             preset="fast", prompt=None, extra_pnginfo=None,name="Hua_Video_Output"): # Removed save_metadata_png parameter
 
         # 修复：检查输入是否为空，同时支持 Tensor 和 list，并计算 num_frames
         num_frames = 0
