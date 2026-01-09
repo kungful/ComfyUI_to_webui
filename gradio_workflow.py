@@ -1,3 +1,13 @@
+import os
+# 清除代理环境变量，防止httpx使用socks代理导致错误
+os.environ.pop('http_proxy', None)
+os.environ.pop('https_proxy', None)
+os.environ.pop('all_proxy', None)
+os.environ.pop('HTTP_PROXY', None)
+os.environ.pop('HTTPS_PROXY', None)
+os.environ.pop('ALL_PROXY', None)
+# 设置NO_PROXY，避免使用代理
+os.environ['NO_PROXY'] = '*'
 import json
 import time
 import random
@@ -1165,7 +1175,11 @@ with gr.Blocks() as demo:
                with video_accordion:
                    # 使用 filepath 类型，因为 ComfyUI 节点需要文件名
                    # sources=["upload"] 限制为仅上传
-                   input_video = gr.Video(label="上传视频", sources=["upload"], height=256, width=256)
+                   input_video = gr.File(
+                       label="上传视频(支持任何格式)", 
+                       file_types=[".mp4", ".mov", ".avi", ".mkv"],
+                       type="filepath", ##关键：直接传递文件路径给 ComfyUI，不读取内容到内存
+                   )
     
                with gr.Row():
                    with gr.Column(scale=3):
